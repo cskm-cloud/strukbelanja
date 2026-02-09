@@ -52,6 +52,7 @@
         .edit-btn { background-color: #ffc107; color: #333; }
         .delete-btn { background-color: #dc3545; color: white; }
         .footer { text-align: center; margin-top: 40px; font-size: 14px; color: #666; }
+        .filter { margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -61,27 +62,22 @@
             <div>
                 <label for="name"><i class="fas fa-user"></i> Nama:</label>
                 <input type="text" id="name" required>
-                <div class="error" id="nameError"></div>
             </div>
             <div>
                 <label for="email"><i class="fas fa-envelope"></i> Email:</label>
                 <input type="email" id="email" required>
-                <div class="error" id="emailError"></div>
             </div>
             <div>
                 <label for="store"><i class="fas fa-store"></i> Nama Toko/Tenant:</label>
                 <input type="text" id="store" required>
-                <div class="error" id="storeError"></div>
             </div>
             <div>
-                <label for="phone"><i class="fas fa-phone"></i> No HP:</label>
-                <input type="tel" id="phone" required>
-                <div class="error" id="phoneError"></div>
+                <label for="phone"><i class="fas fa-phone"></i> No HP (Mulai 08):</label>
+                <input type="tel" id="phone" required placeholder="Contoh: 08123456789">
             </div>
             <div style="grid-column: span 2;">
                 <label for="amount"><i class="fas fa-dollar-sign"></i> Jumlah/Nilai Belanja:</label>
                 <input type="number" id="amount" required>
-                <div class="error" id="amountError"></div>
             </div>
             <button type="submit"><i class="fas fa-save"></i> Simpan Data</button>
         </form>
@@ -112,12 +108,27 @@
     </div>
 
     <script>
+        // --- 1. LOGIKA ID PERANGKAT ---
+        function getDeviceId() {
+            let id = localStorage.getItem('deviceId');
+            if (!id) {
+                id = prompt("Aplikasi Baru Terdeteksi!\nMasukkan Nama/ID Perangkat ini (contoh: HP-KASIR-01):");
+                if (!id || id.trim() === "") {
+                    id = "Device-" + Math.floor(Math.random() * 1000);
+                }
+                localStorage.setItem('deviceId', id);
+            }
+            return id;
+        }
+
+        const DEVICE_ID = getDeviceId();
+
+        // --- 2. LOGIKA DATABASE (IndexedDB) ---
         const dbName = 'CustomerDB';
         const storeName = 'customers';
         let db;
         let editingId = null;
 
-        // Buka Database
         const request = indexedDB.open(dbName, 1);
         request.onsuccess = (e) => { db = e.target.result; loadData(); };
         request.onupgradeneeded = (e) => {
@@ -152,15 +163,33 @@
             };
         }
 
-        // Simpan / Edit
+        // --- 3. SIMPAN DATA DENGAN VALIDASI ---
         document.getElementById('customerForm').addEventListener('submit', (e) => {
             e.preventDefault();
+            
+            const phone = document.getElementById('phone').value;
+            const amount = document.getElementById('amount').value;
+
+            // VALIDASI
+            if (!phone.startsWith('08')) {
+                alert("⚠️ Nomor HP harus dimulai dengan angka 08!");
+                return;
+            }
+            if (phone.length < 10 || phone.length > 13) {
+                alert("⚠️ Nomor HP harus antara 10-13 digit!");
+                return;
+            }
+            if (amount <= 0) {
+                alert("⚠️ Jumlah belanja tidak valid!");
+                return;
+            }
+
             const data = {
                 name: document.getElementById('name').value,
                 email: document.getElementById('email').value,
                 store: document.getElementById('store').value,
-                phone: document.getElementById('phone').value,
-                amount: document.getElementById('amount').value
+                phone: phone,
+                amount: amount
             };
 
             const tx = db.transaction([storeName], 'readwrite');
@@ -178,36 +207,11 @@
             tx.oncomplete = () => {
                 document.getElementById('customerForm').reset();
                 loadData();
-                alert('Data berhasil disimpan!');
+                alert('✅ Data berhasil disimpan!');
             };
         });
 
-        function editData(id) {
-            const tx = db.transaction([storeName], 'readonly');
-            const store = tx.objectStore(storeName);
-            store.get(id).onsuccess = (e) => {
-                const item = e.target.result;
-                document.getElementById('name').value = item.name;
-                document.getElementById('email').value = item.email;
-                document.getElementById('store').value = item.store;
-                document.getElementById('phone').value = item.phone;
-                document.getElementById('amount').value = item.amount;
-                editingId = id;
-                document.querySelector('#customerForm button').innerHTML = '<i class="fas fa-sync"></i> Perbarui Data';
-            };
-        }
-
-        function deleteData(id) {
-            if(confirm('Hapus data?')) {
-                const tx = db.transaction([storeName], 'readwrite');
-                tx.objectStore(storeName).delete(id);
-                tx.oncomplete = () => loadData();
-            }
-        }
-
-        document.getElementById('search').addEventListener('input', (e) => loadData(e.target.value));
-
-        // --- FUNGSI KIRIM EMAIL & AUTO-HAPUS ---
+        // --- 4. KIRIM EMAIL ---
         document.getElementById('exportBtn').addEventListener('click', () => {
             const tx = db.transaction([storeName], 'readonly');
             const store = tx.objectStore(storeName);
@@ -217,14 +221,13 @@
                 const allData = req.result;
                 if (allData.length === 0) return alert('Tidak ada data untuk dikirim.');
 
-                // Susun teks mentah untuk body email
-                let reportText = "LAPORAN DATA KONSUMEN\n";
+                let reportText = `LAPORAN DARI PERANGKAT: ${DEVICE_ID}\n`;
+                reportText += `TANGGAL: ${new Date().toLocaleString('id-ID')}\n`;
                 reportText += "==========================\n\n";
                 
                 allData.forEach((item, index) => {
                     reportText += `${index + 1}. NAMA: ${item.name}\n`;
                     reportText += `   TOKO: ${item.store}\n`;
-                    reportText += `   EMAIL: ${item.email}\n`;
                     reportText += `   HP: ${item.phone}\n`;
                     reportText += `   JUMLAH: ${item.amount}\n`;
                     reportText += "--------------------------\n";
@@ -235,26 +238,45 @@
                     message: reportText
                 };
 
-                // Ganti SERVICE_ID dan TEMPLATE_ID sesuai akun EmailJS Anda
                 emailjs.send('service_5mleabr', 'template_famzatq', templateParams)
                 .then(() => {
-                    alert('Laporan berhasil dikirim ke Email!');
-                    
-                    // Fitur Auto-Hapus setelah sukses
-                    if (confirm('Data sudah terkirim. Ingin mengosongkan tabel?')) {
+                    alert('🚀 Laporan berhasil dikirim!');
+                    if (confirm('Bersihkan tabel setelah kirim?')) {
                         const clearTx = db.transaction([storeName], 'readwrite');
                         clearTx.objectStore(storeName).clear();
-                        clearTx.oncomplete = () => {
-                            loadData();
-                            alert('Tabel telah dibersihkan.');
-                        };
+                        clearTx.oncomplete = () => loadData();
                     }
                 }, (err) => {
-                    alert('Gagal mengirim email: ' + JSON.stringify(err));
+                    alert('Gagal mengirim: ' + JSON.stringify(err));
                 });
             };
         });
+
+        // --- 5. FUNGSI EDIT & HAPUS ---
+        function editData(id) {
+            const tx = db.transaction([storeName], 'readonly');
+            tx.objectStore(storeName).get(id).onsuccess = (e) => {
+                const item = e.target.result;
+                document.getElementById('name').value = item.name;
+                document.getElementById('email').value = item.email;
+                document.getElementById('store').value = item.store;
+                document.getElementById('phone').value = item.phone;
+                document.getElementById('amount').value = item.amount;
+                editingId = id;
+                document.querySelector('#customerForm button').innerHTML = '<i class="fas fa-sync"></i> Perbarui Data';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+        }
+
+        function deleteData(id) {
+            if (confirm('Hapus data ini?')) {
+                const tx = db.transaction([storeName], 'readwrite');
+                tx.objectStore(storeName).delete(id);
+                tx.oncomplete = () => loadData();
+            }
+        }
+
+        document.getElementById('search').addEventListener('input', (e) => loadData(e.target.value));
     </script>
 </body>
-
 </html>
