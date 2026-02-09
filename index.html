@@ -12,77 +12,59 @@
         .header-mall { border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
         .kediri { color: #c9a24d; font-weight: bold; font-size: 32px; }
         .mall { color: #1b7f3a; font-weight: bold; font-size: 32px; }
-        
-        .form-group label { font-weight: 600; color: #444; }
         .btn-simpan { background-color: #007bff; color: white; width: 100%; font-weight: bold; margin-top: 10px; }
-        
-        .table-responsive { margin-top: 30px; }
-        .img-preview { 
-            width: 60px; height: 60px; object-fit: cover; 
-            border-radius: 5px; cursor: pointer; border: 1px solid #ddd;
-        }
-        .img-preview:hover { transform: scale(4); transition: 0.3s; position: relative; z-index: 100; }
-        
-        #status-msg { display: none; margin-top: 10px; }
-        
-        /* Loading Overlay */
+        .img-preview { width: 60px; height: 60px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; }
         #loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 999; text-align: center; padding-top: 20%; }
     </style>
 </head>
 <body>
 
-<div id="loading"><h4>Memproses & Mengompres Gambar...</h4></div>
+<div id="loading"><h4>Sedang Memproses...</h4></div>
 
 <div class="container">
     <div class="header-mall text-center">
         <span class="kediri">Kediri</span><span class="mall">Mall</span>
-        <p class="text-muted">Aplikasi Pendataan Konsumen Offline</p>
+        <p class="text-muted" id="displayDevice">Memuat ID Perangkat...</p>
     </div>
 
     <form id="formKonsumen">
         <div class="row">
             <div class="col-md-6 form-group">
                 <label>Nama Konsumen:</label>
-                <input type="text" id="nama" class="form-control" required placeholder="Nama Lengkap">
+                <input type="text" id="nama" class="form-control" required>
             </div>
             <div class="col-md-6 form-group">
                 <label>Email:</label>
-                <input type="email" id="email" class="form-control" required placeholder="contoh@gmail.com">
+                <input type="email" id="email" class="form-control" required>
             </div>
         </div>
 
         <div class="row">
             <div class="col-md-6 form-group">
                 <label>Nama Toko/Tenant:</label>
-                <input type="text" id="toko" class="form-control" required placeholder="Nama Toko">
+                <input type="text" id="toko" class="form-control" required>
             </div>
             <div class="col-md-6 form-group">
-                <label>No HP:</label>
-                <input type="number" id="noHP" class="form-control" required placeholder="0812xxxx">
+                <label>No HP (Mulai 08):</label>
+                <input type="text" id="noHP" class="form-control" required placeholder="08...">
             </div>
         </div>
 
         <div class="form-group">
             <label>Jumlah/Nilai Belanja (Rp):</label>
-            <input type="number" id="jumlah" class="form-control" required placeholder="Contoh: 200000">
+            <input type="number" id="jumlah" class="form-control" required>
         </div>
 
         <div class="form-group">
             <label>Foto Struk Belanja:</label>
             <input type="file" id="fotoStruk" class="form-control-file" accept="image/*">
-            <small class="text-muted">Foto akan dikompres otomatis agar hemat memori.</small>
         </div>
 
-        <button type="button" onclick="prosesSimpan()" class="btn btn-simpan btn-lg shadow-sm">💾 Simpan Data</button>
+        <button type="button" onclick="prosesSimpan()" class="btn btn-simpan btn-lg shadow-sm">💾 Simpan Data Lokal</button>
     </form>
 
-    <div id="status-msg" class="alert"></div>
-
-    <div class="table-responsive">
-        <h5 class="mb-3">📋 Data Tersimpan Lokal</h5>
-        <input type="text" id="cari" class="form-control mb-3" placeholder="Cari nama atau toko..." onkeyup="renderTable()">
-        
-        <table class="table table-hover table-bordered">
+    <div class="table-responsive mt-4">
+        <table class="table table-bordered">
             <thead class="thead-dark">
                 <tr>
                     <th>Foto</th>
@@ -92,30 +74,50 @@
                     <th>Aksi</th>
                 </tr>
             </thead>
-            <tbody id="tabelBody">
-                </tbody>
+            <tbody id="tabelBody"></tbody>
         </table>
     </div>
 
-    <button onclick="kirimEmailSemua()" class="btn btn-success mt-3">📧 Kirim Laporan ke Email</button>
+    <button onclick="kirimEmailSemua()" class="btn btn-success btn-block mt-3">📧 Kirim Laporan ke Email</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+
 <script>
-    // Inisialisasi EmailJS (Ganti dengan Public Key Anda)
+    // --- 1. INISIALISASI ---
     (function() {
-        emailjs.init("YOUR_PUBLIC_KEY"); 
+        emailjs.init("H4GfR2mR_i8LVtxwa"); // Public Key Anda sudah terpasang
     })();
 
+    function getDeviceId() {
+        let id = localStorage.getItem('deviceId');
+        if (!id) {
+            id = prompt("Masukkan ID Perangkat (Contoh: HP-01):");
+            if (!id) id = "Device-Unknown";
+            localStorage.setItem('deviceId', id);
+        }
+        return id;
+    }
+
+    const DEVICE_ID = getDeviceId();
+    document.getElementById('displayDevice').innerText = "ID Perangkat: " + DEVICE_ID;
     let database = JSON.parse(localStorage.getItem('db_konsumen')) || [];
 
-    // Fungsi Utama Simpan
+    // --- 2. SIMPAN DATA & KOMPRESI FOTO ---
     function prosesSimpan() {
+        const nama = document.getElementById('nama').value;
+        const noHP = document.getElementById('noHP').value;
         const fileInput = document.getElementById('fotoStruk');
         const file = fileInput.files[0];
-        
-        if (!document.getElementById('nama').value) {
-            alert("Nama harus diisi!");
+
+        if (!nama || !noHP) {
+            alert("Nama dan No HP wajib diisi!");
+            return;
+        }
+
+        // VALIDASI 08
+        if (!noHP.startsWith('08')) {
+            alert("Nomor HP harus dimulai dengan 08!");
             return;
         }
 
@@ -124,32 +126,28 @@
         if (file) {
             const reader = new FileReader();
             reader.readAsDataURL(file);
-            reader.onload = function(event) {
+            reader.onload = function(e) {
                 const img = new Image();
-                img.src = event.target.result;
+                img.src = e.target.result;
                 img.onload = function() {
-                    // PROSES KOMPRESI (Maksimal lebar 400px)
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 400;
+                    const MAX_WIDTH = 400; // Ukuran kecil agar email tidak berat
                     const scaleSize = MAX_WIDTH / img.width;
                     canvas.width = MAX_WIDTH;
                     canvas.height = img.height * scaleSize;
-
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                    // Ubah ke Base64 dengan kualitas 0.7 (70%)
-                    const base64Img = canvas.toDataURL('image/jpeg', 0.7);
-                    simpanKeLocalStorage(base64Img);
+                    const base64Img = canvas.toDataURL('image/jpeg', 0.6); // Kualitas 60%
+                    saveData(base64Img);
                 };
             };
         } else {
-            simpanKeLocalStorage(""); // Simpan tanpa foto
+            saveData("");
         }
     }
 
-    function simpanKeLocalStorage(fotoData) {
-        const dataBaru = {
+    function saveData(fotoData) {
+        const data = {
             id: Date.now(),
             nama: document.getElementById('nama').value,
             email: document.getElementById('email').value,
@@ -157,85 +155,71 @@
             noHP: document.getElementById('noHP').value,
             jumlah: document.getElementById('jumlah').value,
             foto: fotoData,
-            waktu: new Date().toLocaleString()
+            deviceId: DEVICE_ID
         };
-
-        database.push(dataBaru);
+        database.push(data);
         localStorage.setItem('db_konsumen', JSON.stringify(database));
-        
         document.getElementById('formKonsumen').reset();
         document.getElementById('loading').style.display = 'none';
-        tampilkanPesan("Data berhasil disimpan secara lokal!", "success");
         renderTable();
+        alert("Data tersimpan di HP!");
     }
 
     function renderTable() {
-        const tabelBody = document.getElementById('tabelBody');
-        const filter = document.getElementById('cari').value.toLowerCase();
-        tabelBody.innerHTML = "";
-
-        database.forEach((d, index) => {
-            if (d.nama.toLowerCase().includes(filter) || d.toko.toLowerCase().includes(filter)) {
-                let fotoHtml = d.foto ? `<img src="${d.foto}" class="img-preview">` : `<small>No Photo</small>`;
-                
-                tabelBody.innerHTML += `
-                    <tr>
-                        <td class="text-center">${fotoHtml}</td>
-                        <td><b>${d.nama}</b><br><small>${d.email}</small></td>
-                        <td>${d.toko}</td>
-                        <td>Rp ${parseInt(d.jumlah).toLocaleString()}</td>
-                        <td>
-                            <button class="btn btn-sm btn-danger" onclick="hapusData(${d.id})">🗑️</button>
-                        </td>
-                    </tr>
-                `;
-            }
+        const body = document.getElementById('tabelBody');
+        body.innerHTML = "";
+        database.forEach(d => {
+            body.innerHTML += `
+                <tr>
+                    <td>${d.foto ? `<img src="${d.foto}" class="img-preview">` : 'No Photo'}</td>
+                    <td>${d.nama}</td>
+                    <td>${d.toko}</td>
+                    <td>Rp ${parseInt(d.jumlah).toLocaleString()}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="hapus(${d.id})">🗑️</button></td>
+                </tr>`;
         });
     }
 
-    function hapusData(id) {
-        if (confirm("Hapus data ini?")) {
-            database = database.filter(item => item.id !== id);
-            localStorage.setItem('db_konsumen', JSON.stringify(database));
-            renderTable();
-        }
+    function hapus(id) {
+        database = database.filter(i => i.id !== id);
+        localStorage.setItem('db_konsumen', JSON.stringify(database));
+        renderTable();
     }
 
-    function tampilkanPesan(msg, tipe) {
-        const div = document.getElementById('status-msg');
-        div.innerText = msg;
-        div.className = `alert alert-${tipe}`;
-        div.style.display = 'block';
-        setTimeout(() => div.style.display = 'none', 3000);
-    }
-
+    // --- 3. KIRIM KE EMAIL ---
     function kirimEmailSemua() {
-        if (database.length === 0) {
-            alert("Tidak ada data untuk dikirim.");
-            return;
-        }
+        if (database.length === 0) return alert("Belum ada data!");
 
-        // Contoh pengiriman data terakhir saja ke EmailJS
+        let reportText = `LAPORAN DARI: ${DEVICE_ID}\n====================\n`;
+        database.forEach((d, i) => {
+            reportText += `${i+1}. ${d.nama} | ${d.toko} | Rp ${d.jumlah} | HP: ${d.noHP}\n`;
+        });
+
+        // Mengambil data terakhir untuk lampiran foto (EmailJS Free terbatas 1 lampiran)
         const dataTerakhir = database[database.length - 1];
-        
-        const templateParams = {
-            to_name: "Admin Kediri Mall",
-            from_name: dataTerakhir.nama,
-            message: `Laporan baru dari ${dataTerakhir.toko}. Nilai: Rp ${dataTerakhir.jumlah}`,
-            struk_image: dataTerakhir.foto // Pastikan di template EmailJS ada variabel {{struk_image}}
+
+        const params = {
+            to_email: 'projectapp412@gmail.com',
+            from_name: DEVICE_ID,
+            message: reportText,
+            struk_image: dataTerakhir.foto // Pastikan di Template EmailJS ada {{struk_image}}
         };
 
-        emailjs.send('YOUR_SERVICE_ID', 'YOUR_TEMPLATE_ID', templateParams)
-            .then(function() {
-                alert("Laporan Berhasil Terkirim ke Email!");
-            }, function(error) {
-                alert("Gagal mengirim: " + JSON.stringify(error));
+        // GANTI ID DI BAWAH INI SESUAI DASHBOARD EMAILJS KAMU
+        emailjs.send('service_5mleabr', 'template_famzatq', params)
+            .then(() => {
+                alert("🚀 Laporan Berhasil Dikirim!");
+                if(confirm("Hapus data di HP agar tidak dobel?")) {
+                    database = [];
+                    localStorage.setItem('db_konsumen', JSON.stringify(database));
+                    renderTable();
+                }
+            }, (err) => {
+                alert("Gagal: " + JSON.stringify(err));
             });
     }
 
-    // Jalankan tabel saat pertama buka
     renderTable();
 </script>
-
 </body>
 </html>
