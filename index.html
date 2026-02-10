@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Data Konsumen - Kediri Mall</title>
+    <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     
     <style>
@@ -58,7 +59,6 @@
         <div class="form-group">
             <label>Foto Struk Belanja:</label>
             <input type="file" id="fotoStruk" class="form-control-file" accept="image/*">
-            <small class="text-muted">Foto akan otomatis dikecilkan agar hemat memori.</small>
         </div>
 
         <button type="button" onclick="prosesSimpan()" class="btn btn-simpan btn-lg shadow-sm">💾 Simpan Data Lokal</button>
@@ -88,10 +88,19 @@
 <script>
     // --- 1. INISIALISASI EMAILJS ---
     (function() {
-        emailjs.init("H4GfR2mR_i8LVtxwa"); // Public Key Anda
+        emailjs.init("H4GfR2mR_i8LVtxwa"); 
     })();
 
-    // --- 2. LOGIKA ID PERANGKAT ---
+    // --- 2. LOGIKA OFFLINE (SERVICE WORKER) ---
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Offline mode aktif!'))
+                .catch(err => console.log('Gagal offline', err));
+        });
+    }
+
+    // --- 3. LOGIKA ID PERANGKAT ---
     function getDeviceId() {
         let id = localStorage.getItem('deviceId');
         if (!id) {
@@ -107,23 +116,14 @@
 
     let database = JSON.parse(localStorage.getItem('db_konsumen')) || [];
 
-    // --- 3. PROSES SIMPAN & VALIDASI 08 ---
     function prosesSimpan() {
         const nama = document.getElementById('nama').value;
         const noHP = document.getElementById('noHP').value;
         const fileInput = document.getElementById('fotoStruk');
         const file = fileInput.files[0];
 
-        if (!nama || !noHP) {
-            alert("Nama dan No HP wajib diisi!");
-            return;
-        }
-
-        // VALIDASI AWALAN 08
-        if (!noHP.startsWith('08')) {
-            alert("⚠️ ERROR: Nomor HP harus dimulai dengan angka 08!");
-            return;
-        }
+        if (!nama || !noHP) { alert("Nama dan No HP wajib diisi!"); return; }
+        if (!noHP.startsWith('08')) { alert("⚠️ Nomor HP wajib 08!"); return; }
 
         document.getElementById('loading').style.display = 'block';
 
@@ -141,13 +141,10 @@
                     canvas.height = img.height * scaleSize;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const base64Img = canvas.toDataURL('image/jpeg', 0.6);
-                    saveToLocal(base64Img);
+                    saveToLocal(canvas.toDataURL('image/jpeg', 0.6));
                 };
             };
-        } else {
-            saveToLocal("");
-        }
+        } else { saveToLocal(""); }
     }
 
     function saveToLocal(fotoData) {
@@ -166,68 +163,52 @@
         document.getElementById('formKonsumen').reset();
         document.getElementById('loading').style.display = 'none';
         renderTable();
-        alert("✅ Data berhasil disimpan di memori HP!");
+        alert("✅ Data tersimpan di HP!");
     }
 
     function renderTable() {
         const tbody = document.getElementById('tabelBody');
         tbody.innerHTML = "";
         database.forEach(d => {
-            tbody.innerHTML += `
-                <tr>
-                    <td class="text-center">${d.foto ? `<img src="${d.foto}" class="img-preview">` : '<small>No Photo</small>'}</td>
-                    <td><b>${d.nama}</b><br><small>${d.noHP}</small></td>
-                    <td>${d.toko}</td>
-                    <td>Rp ${parseInt(d.jumlah).toLocaleString()}</td>
-                    <td><button class="btn btn-danger btn-sm" onclick="hapusData(${d.id})">🗑️</button></td>
-                </tr>`;
+            tbody.innerHTML += `<tr>
+                <td class="text-center">${d.foto ? `<img src="${d.foto}" class="img-preview">` : ''}</td>
+                <td><b>${d.nama}</b></td>
+                <td>${d.toko}</td>
+                <td>Rp ${parseInt(d.jumlah).toLocaleString()}</td>
+                <td><button class="btn btn-danger btn-sm" onclick="hapusData(${d.id})">🗑️</button></td>
+            </tr>`;
         });
     }
 
     function hapusData(id) {
-        if (confirm("Hapus data ini?")) {
+        if (confirm("Hapus?")) {
             database = database.filter(item => item.id !== id);
             localStorage.setItem('db_konsumen', JSON.stringify(database));
             renderTable();
         }
     }
 
-    // --- 4. KIRIM EMAIL LAPORAN ---
     function kirimEmailLaporan() {
-        if (database.length === 0) {
-            alert("Tidak ada data untuk dikirim.");
-            return;
-        }
-
-        let reportBody = `LAPORAN DARI PERANGKAT: ${DEVICE_ID}\n`;
-        reportBody += `TANGGAL: ${new Date().toLocaleString('id-ID')}\n`;
-        reportBody += `==========================\n\n`;
-
+        if (database.length === 0) { alert("Data kosong."); return; }
+        
+        let reportBody = `LAPORAN DARI: ${DEVICE_ID}\n\n`;
         database.forEach((d, i) => {
-            reportBody += `${i+1}. Nama: ${d.nama}\n   Toko: ${d.toko}\n   HP: ${d.noHP}\n   Nilai: Rp ${parseInt(d.jumlah).toLocaleString()}\n`;
-            reportBody += `--------------------------\n`;
+            reportBody += `${i+1}. ${d.nama} - ${d.toko} - Rp ${parseInt(d.jumlah).toLocaleString()}\n`;
         });
 
-        const lastData = database[database.length - 1];
-
-        const templateParams = {
+        emailjs.send('service_5mleabr', 'template_famzatq', {
             to_email: 'projectapp412@gmail.com',
             from_name: DEVICE_ID,
             message: reportBody,
-            struk_image: lastData.foto // Foto data terakhir sebagai lampiran
-        };
-
-        emailjs.send('service_5mleabr', 'template_famzatq', templateParams)
-            .then(function() {
-                alert("🚀 LAPORAN BERHASIL TERKIRIM KE EMAIL!");
-                if (confirm("Bersihkan data di HP ini agar tidak menumpuk?")) {
-                    database = [];
-                    localStorage.setItem('db_konsumen', JSON.stringify(database));
-                    renderTable();
-                }
-            }, function(error) {
-                alert("Gagal mengirim: " + JSON.stringify(error));
-            });
+            struk_image: database[database.length - 1].foto
+        }).then(() => {
+            alert("🚀 TERKIRIM!");
+            if (confirm("Hapus data di HP?")) {
+                database = [];
+                localStorage.setItem('db_konsumen', JSON.stringify(database));
+                renderTable();
+            }
+        }, (err) => alert("Gagal kirim. Pastikan ada internet!"));
     }
 
     renderTable();
