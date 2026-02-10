@@ -16,6 +16,8 @@
         .btn-simpan { background-color: #007bff; color: white; width: 100%; font-weight: bold; margin-top: 10px; }
         .img-preview { width: 60px; height: 60px; object-fit: cover; border-radius: 5px; border: 1px solid #ddd; }
         #loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 999; text-align: center; padding-top: 20%; }
+        /* Style tambahan untuk info minimal belanja */
+        .min-info { font-size: 0.85rem; color: #dc3545; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -53,7 +55,8 @@
 
         <div class="form-group">
             <label>Jumlah/Nilai Belanja (Rp):</label>
-            <input type="number" id="jumlah" class="form-control" required>
+            <input type="number" id="jumlah" class="form-control" required min="100000" placeholder="Contoh: 150000">
+            <small class="min-info">* Minimal belanja untuk klaim adalah Rp 100.000</small>
         </div>
 
         <div class="form-group">
@@ -119,11 +122,21 @@
     function prosesSimpan() {
         const nama = document.getElementById('nama').value;
         const noHP = document.getElementById('noHP').value;
+        const jumlah = document.getElementById('jumlah').value;
         const fileInput = document.getElementById('fotoStruk');
         const file = fileInput.files[0];
 
-        if (!nama || !noHP) { alert("Nama dan No HP wajib diisi!"); return; }
-        if (!noHP.startsWith('08')) { alert("⚠️ Nomor HP wajib 08!"); return; }
+        // VALIDASI DASAR
+        if (!nama || !noHP || !jumlah) { alert("Semua kolom (Nama, No HP, Jumlah) wajib diisi!"); return; }
+        
+        // VALIDASI NOMOR HP
+        if (!noHP.startsWith('08')) { alert("⚠️ Nomor HP wajib dimulai dengan 08!"); return; }
+
+        // VALIDASI MINIMAL BELANJA 100.000
+        if (parseInt(jumlah) < 100000) {
+            alert("❌ GAGAL SIMPAN: Nilai belanja tidak boleh kurang dari Rp 100.000!");
+            return;
+        }
 
         document.getElementById('loading').style.display = 'block';
 
@@ -215,4 +228,3 @@
 </script>
 </body>
 </html>
-
